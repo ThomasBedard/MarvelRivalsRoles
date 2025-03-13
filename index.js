@@ -36,41 +36,62 @@ const emojiGeneralRoles = {
 
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
-let messageIds = {};
+const CHARACTER_MESSAGE_ID_1 = process.env.CHARACTER_MESSAGE_ID_1;
+
+const CHARACTER_MESSAGE_ID_2 = process.env.CHARACTER_MESSAGE_ID_2;
+
+const ROLE_MESSAGE_ID = process.env.ROLE_MESSAGE_ID;
+
+
+async function sendMessageIfNotExists(channel, emojiMap, envVarName, title) {
+  const messageId = process.env[envVarName];
+  let message;
+
+  if (messageId) {
+    try {
+      message = await channel.messages.fetch(messageId);
+      console.log(`Fetched existing message: ${envVarName}`);
+    } catch {
+      console.log(`Message ID stored in ${envVarName} not found, sending new.`);
+    }
+  }
+
+  if (!message) {
+    let description = `**${title}**\n\n`;
+    const entries = Object.entries(emojiMap).map(([emoji, role]) => `${emoji} ${role}`);
+    description += entries.join(' • ');
+    message = await channel.send(description);
+    
+    // Add reactions
+    for (const emoji of Object.keys(emojiMap)) {
+      await message.react(emoji);
+    }
+
+    console.log(`New message sent for ${envVarName}: ${message.id}`);
+    console.log(`IMPORTANT: Set ${envVarName}=${message.id} in Railway variables.`);
+  }
+
+  return message.id;
+}
 
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  // Function to send messages horizontally
-  async function sendMessageAndReactHorizontal(emojiMap, title) {
-    let description = `**${title}**\n\n`;
-    const entries = Object.entries(emojiMap).map(([emoji, role]) => `${emoji} ${role}`);
-    description += entries.join(' • ');
-
-    const sentMessage = await channel.send(description);
-    for (const emoji of Object.keys(emojiMap)) {
-      await sentMessage.react(emoji);
-    }
-    return sentMessage.id;
-  }
-
-  // Sending horizontally arranged messages:
-  messageIds.message1 = await sendMessageAndReactHorizontal(emojiRoleMap1, 'Marvel Rivals Characters (1/2)');
-  messageIds.message2 = await sendMessageAndReactHorizontal(emojiRoleMap2, 'Marvel Rivals Characters (2/2)');
-  messageIds.message3 = await sendMessageAndReactHorizontal(emojiGeneralRoles, 'Choose Your Game Role');
+  await sendMessageIfNotExists(channel, emojiRoleMap1, CHARACTER_MESSAGE_ID_1, 'Marvel Rivals Characters (1/2)');
+  await sendMessageIfNotExists(channel, emojiRoleMap2, CHARACTER_MESSAGE_ID_2, 'Marvel Rivals Characters (2/2)');
+  await sendMessageIfNotExists(channel, emojiGeneralRoles, ROLE_MESSAGE_ID, 'Choose Your Game Role');
 });
 
+// Combine emoji maps for reaction handling
 const allEmojiRoleMaps = { ...emojiRoleMap1, ...emojiRoleMap2, ...emojiGeneralRoles };
 
-// Reaction ADD
 client.on('messageReactionAdd', async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
   if (reaction.partial) await reaction.fetch();
   if (user.bot) return;
-
-  if (!Object.values(messageIds).includes(reaction.message.id)) return;
+  if (!Object.values(process.env).includes(reaction.message.id)) return;
 
   const roleName = allEmojiRoleMaps[reaction.emoji.name];
   if (!roleName) return;
@@ -89,7 +110,7 @@ client.on('messageReactionRemove', async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
   if (reaction.partial) await reaction.fetch();
   if (user.bot) return;
-  if (!Object.values(messageIds).includes(reaction.message.id)) return;
+  if (!Object.values(process.env).includes(reaction.message.id)) return;
 
   const roleName = allEmojiRoleMaps[reaction.emoji.name];
   if (!roleName) return;
