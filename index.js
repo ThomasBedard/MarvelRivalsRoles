@@ -11,7 +11,6 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-// Split emoji maps to handle Discord's 20 emoji reactions per message limit:
 const emojiRoleMap1 = {
   '🕷️': 'Spider-Man', '⚡': 'Thor', '🛡️': 'Captain America', '💎': 'Iron Man',
   '💥': 'Hulk', '🏹': 'Hawkeye', '🪄': 'Scarlet Witch', '🧙': 'Doctor Strange',
@@ -41,6 +40,9 @@ const MESSAGE_IDS = {
   CHARACTERS_2: process.env.CHARACTER_MESSAGE_ID_2,
   ROLES: process.env.ROLE_MESSAGE_ID,
 };
+
+const allEmojiRoleMaps = { ...emojiRoleMap1, ...emojiRoleMap2, ...emojiGeneralRoles };
+const managedMessageIds = [MESSAGE_IDS.CHARACTERS_1, MESSAGE_IDS.CHARACTERS_2, MESSAGE_IDS.ROLES];
 
 async function fetchOrSend(channel, id, emojiMap, title, varName) {
   let message;
@@ -74,11 +76,51 @@ client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  const id1 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_1, emojiRoleMap1, 'Marvel Rivals Characters (1/2)', 'CHARACTER_MESSAGE_ID_1');
-  const id2 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_2, emojiRoleMap2, 'Marvel Rivals Characters (2/2)', 'CHARACTER_MESSAGE_ID_2');
-  const id3 = await fetchOrSend(channel, MESSAGE_IDS.ROLES, emojiGeneralRoles, 'Choose Your Game Role', 'ROLE_MESSAGE_ID');
+  MESSAGE_IDS.CHARACTERS_1 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_1, emojiRoleMap1, 'Marvel Rivals Characters (1/2)', 'CHARACTER_MESSAGE_ID_1');
+  MESSAGE_IDS.CHARACTERS_2 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_2, emojiRoleMap2, 'Marvel Rivals Characters (2/2)', 'CHARACTER_MESSAGE_ID_2');
+  MESSAGE_IDS.ROLES = await fetchOrSend(channel, MESSAGE_IDS.ROLES, emojiGeneralRoles, 'Choose Your Game Role', 'ROLE_MESSAGE_ID');
+});
 
-  console.log('Final IDs:', { id1, id2, id3 });
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (reaction.partial) await reaction.fetch();
+  if (user.bot) return;
+
+  if (!managedMessageIds.includes(reaction.message.id)) return;
+
+  const emoji = reaction.emoji.name;
+  const roleName = allEmojiRoleMaps[emoji];
+  if (!roleName) return;
+
+  const guild = reaction.message.guild;
+  const role = guild.roles.cache.find(r => r.name === roleName);
+  const member = await guild.members.fetch(user.id);
+
+  if (role && !member.roles.cache.has(role.id)) {
+    await member.roles.add(role);
+    console.log(`Assigned ${roleName} to ${user.username}`);
+  }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+  if (reaction.message.partial) await reaction.message.fetch();
+  if (reaction.partial) await reaction.fetch();
+  if (user.bot) return;
+
+  if (!managedMessageIds.includes(reaction.message.id)) return;
+
+  const emoji = reaction.emoji.name;
+  const roleName = allEmojiRoleMaps[emoji];
+  if (!roleName) return;
+
+  const guild = reaction.message.guild;
+  const role = guild.roles.cache.find(r => r.name === roleName);
+  const member = await guild.members.fetch(user.id);
+
+  if (role && member.roles.cache.has(role.id)) {
+    await member.roles.remove(role);
+    console.log(`Removed ${roleName} from ${user.username}`);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
