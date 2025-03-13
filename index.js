@@ -36,93 +36,49 @@ const emojiGeneralRoles = {
 
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
-const CHARACTER_MESSAGE_ID_1 = process.env.CHARACTER_MESSAGE_ID_1;
+const MESSAGE_IDS = {
+  CHARACTERS_1: process.env.CHARACTER_MESSAGE_ID_1,
+  CHARACTERS_2: process.env.CHARACTER_MESSAGE_ID_2,
+  ROLES: process.env.ROLE_MESSAGE_ID,
+};
 
-const CHARACTER_MESSAGE_ID_2 = process.env.CHARACTER_MESSAGE_ID_2;
-
-const ROLE_MESSAGE_ID = process.env.ROLE_MESSAGE_ID;
-
-
-async function sendMessageIfNotExists(channel, emojiMap, envVarName, title) {
-  const messageId = process.env[envVarName];
+async function fetchOrSend(channel, id, emojiMap, title, varName) {
   let message;
 
-  if (messageId) {
+  if (id) {
     try {
-      message = await channel.messages.fetch(messageId);
-      console.log(`Fetched existing message: ${envVarName}`);
+      message = await channel.messages.fetch(id);
+      console.log(`Fetched existing message for ${varName}`);
     } catch {
-      console.log(`Message ID stored in ${envVarName} not found, sending new.`);
+      console.log(`Could not fetch message with ID ${id}.`);
     }
   }
 
   if (!message) {
     let description = `**${title}**\n\n`;
-    const entries = Object.entries(emojiMap).map(([emoji, role]) => `${emoji} ${role}`);
-    description += entries.join(' • ');
+    description += Object.entries(emojiMap).map(([emoji, role]) => `${emoji} ${role}`).join(' • ');
+
     message = await channel.send(description);
-    
-    // Add reactions
     for (const emoji of Object.keys(emojiMap)) {
       await message.react(emoji);
     }
 
-    console.log(`New message sent for ${envVarName}: ${message.id}`);
-    console.log(`IMPORTANT: Set ${envVarName}=${message.id} in Railway variables.`);
+    console.log(`Sent new message for ${varName}: ${message.id}`);
+    console.log(`Set ${varName}=${message.id} in Railway variables.`);
   }
 
   return message.id;
 }
 
 client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}!`);
-
+  console.log(`Logged in as ${client.user.tag}`);
   const channel = await client.channels.fetch(CHANNEL_ID);
 
-  await sendMessageIfNotExists(channel, emojiRoleMap1, CHARACTER_MESSAGE_ID_1, 'Marvel Rivals Characters (1/2)');
-  await sendMessageIfNotExists(channel, emojiRoleMap2, CHARACTER_MESSAGE_ID_2, 'Marvel Rivals Characters (2/2)');
-  await sendMessageIfNotExists(channel, emojiGeneralRoles, ROLE_MESSAGE_ID, 'Choose Your Game Role');
-});
+  const id1 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_1, emojiRoleMap1, 'Marvel Rivals Characters (1/2)', 'CHARACTER_MESSAGE_ID_1');
+  const id2 = await fetchOrSend(channel, MESSAGE_IDS.CHARACTERS_2, emojiRoleMap2, 'Marvel Rivals Characters (2/2)', 'CHARACTER_MESSAGE_ID_2');
+  const id3 = await fetchOrSend(channel, MESSAGE_IDS.ROLES, emojiGeneralRoles, 'Choose Your Game Role', 'ROLE_MESSAGE_ID');
 
-// Combine emoji maps for reaction handling
-const allEmojiRoleMaps = { ...emojiRoleMap1, ...emojiRoleMap2, ...emojiGeneralRoles };
-
-client.on('messageReactionAdd', async (reaction, user) => {
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (reaction.partial) await reaction.fetch();
-  if (user.bot) return;
-  if (!Object.values(process.env).includes(reaction.message.id)) return;
-
-  const roleName = allEmojiRoleMaps[reaction.emoji.name];
-  if (!roleName) return;
-
-  const guild = reaction.message.guild;
-  const role = guild.roles.cache.find(r => r.name === roleName);
-  const member = await guild.members.fetch(user.id);
-
-  if (role && !member.roles.cache.has(role.id)) {
-    await member.roles.add(role);
-    console.log(`Assigned ${roleName} to ${user.username}`);
-  }
-});
-
-client.on('messageReactionRemove', async (reaction, user) => {
-  if (reaction.message.partial) await reaction.message.fetch();
-  if (reaction.partial) await reaction.fetch();
-  if (user.bot) return;
-  if (!Object.values(process.env).includes(reaction.message.id)) return;
-
-  const roleName = allEmojiRoleMaps[reaction.emoji.name];
-  if (!roleName) return;
-
-  const guild = reaction.message.guild;
-  const role = guild.roles.cache.find(r => r.name === roleName);
-  const member = await guild.members.fetch(user.id);
-
-  if (role && member.roles.cache.has(role.id)) {
-    await member.roles.remove(role);
-    console.log(`Removed ${roleName} from ${user.username}`);
-  }
+  console.log('Final IDs:', { id1, id2, id3 });
 });
 
 client.login(process.env.DISCORD_TOKEN);
